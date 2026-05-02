@@ -5,48 +5,22 @@ import (
 	"net"
 )
 
-const (
-	DiscoveryPort = "5501"
-	DiscoveryMsg  = "P2P_CHAT_DISCOVERY"
-)
-
 func main() {
-	fmt.Println("LOCAL P2PChat: Discovering clients...")
-	listenAddr, err := net.ResolveUDPAddr("udp", ":"+DiscoveryPort)
-	if err != nil {
-		fmt.Printf("Failed to resolve listen address: %v\n", err)
-		return
-	}
-
-	conn, err := net.ListenUDP("udp", listenAddr)
-	if err != nil {
-		panic(err)
-	}
+	// Listen on port 5501
+	conn, _ := net.ListenUDP("udp", &net.UDPAddr{Port: 5501})
 	defer conn.Close()
 
-	broadcastAddr, err := net.ResolveUDPAddr("udp", "255.255.255.255:"+DiscoveryPort)
-	if err != nil {
-		panic(err)
-	}
+	target, _ := net.ResolveUDPAddr("udp", "255.255.255.255:5501")
 
 	go func() {
-		_, err := conn.WriteToUDP([]byte(DiscoveryMsg), broadcastAddr)
-		if err != nil {
-			fmt.Printf("Broadcast err: %v\n", err)
-		}
+		conn.WriteToUDP([]byte("I_AM_HERE"), target)
 	}()
 
-	buffer := make([]byte, 1024)
-	for {
-		n, addr, err := conn.ReadFromUDP(buffer)
-		if err != nil {
-			fmt.Printf("❌ Error reading packet: %v\n", err)
-			continue
-		}
+	fmt.Println("Discovering...")
 
-		message := string(buffer[:n])
-		if message == DiscoveryMsg {
-			fmt.Printf("[PEER DISCOVERED] %s\n", addr.String())
-		}
+	buf := make([]byte, 1024)
+	for {
+		n, addr, _ := conn.ReadFromUDP(buf)
+		fmt.Printf("Found Peer: %s (%s)\n", addr, string(buf[:n]))
 	}
 }
