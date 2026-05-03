@@ -2,48 +2,122 @@ package main
 
 import (
 	"fmt"
-	"net"
-	"strings"
+	"os"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
-func main() {
+var (
+	titleStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#aeed43ff")).
+			Background(lipgloss.Color("#7D56F4")).
+			Padding(0, 1).
+			MarginBottom(1)
 
-	fmt.Print("Enter your name (Max 10 chars): ")
-	var name string
-	fmt.Scanln(&name)
+	boxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#95fd4bff")).
+			Padding(1, 3).
+			Align(lipgloss.Center)
+)
 
-	if len(name) > 10 {
-		name = name[:10]
+type model struct {
+	width     int
+	height    int
+	textInput textinput.Model
+	backend   *Backend
+	loggedIn  bool
+	err       error
+}
+
+func initialModel() model {
+	ti := textinput.New()
+	ti.Placeholder = "Enter your name"
+	ti.Focus()
+	ti.CharLimit = 16
+	ti.Width = 20
+
+	return model{
+		textInput: ti,
 	}
+}
 
-	// Listen on port 5501
-	conn, _ := net.ListenUDP("udp", &net.UDPAddr{Port: 5501})
-	defer conn.Close()
+func (m model) Init() tea.Cmd {
+	return textinput.Blink
+}
 
-	target, _ := net.ResolveUDPAddr("udp", "255.255.255.255:5501")
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 
-	var peers []string
-
-	go func() {
-		conn.WriteToUDP([]byte("P2PDSCVMSG/"+name+"/"+conn.LocalAddr().String()), target)
-		fmt.Println("Discovering...")
-
-		buf := make([]byte, 1024)
-		for {
-			n, _, _ := conn.ReadFromUDP(buf)
-			if len(strings.Split(string(buf[:n]), "/")) < 3 {
-				continue
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			if m.backend != nil {
+				m.backend.Close()
 			}
-			if strings.Split(string(buf[:n]), "/")[0] == "P2PDSCVMSG" && strings.Split(string(buf[:n]), "/")[1] != name {
-				fmt.Printf("Found Peer: %s (%s)\n", strings.Split(string(buf[:n]), "/")[1], strings.Split(string(buf[:n]), "/")[2])
-				peers = append(peers, strings.Split(string(buf[:n]), "/")[1])
+			return m, tea.Quit
+		case "enter":
+			if !m.loggedIn {
+				username := m.textInput.Value()
+				if username == "" {
+					return m, nil
+				}
+				b, err := NewBackend(username)
+				if err != nil {
+					m.err = err
+					return m, nil
+				}
+				m.backend = b
+				m.backend.StartDiscovery()
+				m.loggedIn = true
+
+				ti := textinput.New()
+				ti.Placeholder = "Enter your message"
+				ti.Focus()
+				ti.CharLimit = 200
+				ti.Width = 60
+				m.textInput = ti
+
+				return m, nil
 			}
 		}
-	}()
 
-	for {
-		var input string
-		fmt.Scanln(&input)
-		conn.WriteToUDP([]byte(input), target)
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+	}
+
+	m.textInput, cmd = m.textInput.Update(msg)
+
+	return m, cmd
+}
+
+func (m model) View() string {
+	var content string
+
+	if m.err != nil {
+		content = fmt.Sprintf("Error: %v\n\nPress 'q' to exit.", m.err)
+	} else if !m.loggedIn {
+		title := titleStyle.Render("LOCAL P2P CHAT")
+		instruction := "Enter your name to start discovering peers:"
+		content = fmt.Sprintf("%s\n\n%s\n\n%s", title, instruction, m.textInput.View())
+	} else {
+		title := titleStyle.Render("LOCAL P2P CHAT")
+		content = fmt.Sprintf("%s\n\nWelcome, %s!\n\n%s", title, m.backend.username, m.textInput.View())
+	}
+
+	box := boxStyle.Render(content)
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func main() {
+	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Error running program: %v", err)
+		os.Exit(1)
 	}
 }
