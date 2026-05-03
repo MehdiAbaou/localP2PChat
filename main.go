@@ -6,6 +6,11 @@ import (
 )
 
 func main() {
+
+	fmt.Print("Enter your name: ")
+	var name string
+	fmt.Scanln(&name)
+
 	// Listen on port 5501
 	conn, _ := net.ListenUDP("udp", &net.UDPAddr{Port: 5501})
 	defer conn.Close()
@@ -13,7 +18,7 @@ func main() {
 	target, _ := net.ResolveUDPAddr("udp", "255.255.255.255:5501")
 
 	go func() {
-		conn.WriteToUDP([]byte("I_AM_HERE"), target)
+		conn.WriteToUDP([]byte("P2PCHATV1/"+name), target)
 	}()
 
 	fmt.Println("Discovering...")
