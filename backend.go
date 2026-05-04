@@ -53,7 +53,7 @@ func (b *Backend) StartDiscovery() {
 	go func() {
 		buf := make([]byte, 1024)
 		for {
-			n, _, err := b.conn.ReadFromUDP(buf)
+			n, addr, err := b.conn.ReadFromUDP(buf)
 			if err != nil {
 				continue
 			}
@@ -66,12 +66,16 @@ func (b *Backend) StartDiscovery() {
 
 			switch parts[0] {
 			case "P2PDSCVMSG":
-				b.Peers[parts[2]] = Peer{
-					name:   parts[1],
-					ipHash: parts[2],
+				if doesHashMatch(parts[2], addr) {
+					b.Peers[parts[2]] = Peer{
+						name:   parts[1],
+						ipHash: parts[2],
+					}
 				}
 			case "P2PLEAVMSG":
-				delete(b.Peers, parts[2])
+				if doesHashMatch(parts[2], addr) {
+					delete(b.Peers, parts[2])
+				}
 			default:
 
 			}
@@ -106,4 +110,13 @@ func getIPHash() string {
 	}
 
 	return fmt.Sprintf("%x", md5.Sum(udpAddr.IP))
+}
+
+func doesHashMatch(hash string, addr *net.UDPAddr) bool {
+	if addr == nil {
+		return false
+	}
+	ip := addr.IP.String()
+	h := fmt.Sprintf("%x", md5.Sum([]byte(ip)))
+	return h == hash
 }
