@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -55,7 +56,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c":
 			if m.backend != nil {
 				m.backend.Close()
 			}
@@ -74,7 +75,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.backend = b
 				m.backend.StartDiscovery()
 				m.loggedIn = true
-
+				// just restarting textinput
 				ti := textinput.New()
 				ti.Placeholder = "Enter your message"
 				ti.Focus()
@@ -83,6 +84,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.textInput = ti
 
 				return m, nil
+			} else {
+				msg := strings.TrimSpace(m.textInput.Value())
+				if msg == "" {
+					return m, nil
+				}
+				// just restarting textinput
+				ti := textinput.New()
+				ti.Placeholder = "Enter your message"
+				ti.Focus()
+				ti.CharLimit = 200
+				ti.Width = 60
+				m.textInput = ti
 			}
 		}
 
@@ -107,7 +120,13 @@ func (m model) View() string {
 		content = fmt.Sprintf("%s\n\n%s\n\n%s", title, instruction, m.textInput.View())
 	} else {
 		title := titleStyle.Render("LOCAL P2P CHAT")
-		content = fmt.Sprintf("%s\n\nWelcome, %s!\n\n%s", title, m.backend.username, m.textInput.View())
+
+		content = fmt.Sprintf("%s%s\n\n", title, m.backend.ipHash)
+		for _, msg := range m.backend.Messages {
+			content += msg.sender + " > " + msg.text
+		}
+
+		content += "\n\n" + m.textInput.View()
 	}
 
 	box := boxStyle.Render(content)

@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+const (
+	MAX_MESSAGES = 10
+)
+
 type Peer struct {
 	name   string
 	ipHash string
@@ -18,7 +22,12 @@ type Backend struct {
 	username string
 	ipHash   string
 	Peers    map[string]Peer
-	Messages []string
+	Messages []Message
+}
+
+type Message struct {
+	sender string
+	text   string
 }
 
 func NewBackend(username string) (*Backend, error) {
@@ -32,7 +41,7 @@ func NewBackend(username string) (*Backend, error) {
 		return nil, err
 	}
 
-	target, err := net.ResolveUDPAddr("udp", "255.255.255.255:5501")
+	target, err := net.ResolveUDPAddr("udp", "224.0.0.251:5501")
 	if err != nil {
 		conn.Close()
 		return nil, err
@@ -76,6 +85,16 @@ func (b *Backend) StartDiscovery() {
 				if doesHashMatch(parts[2], addr) {
 					delete(b.Peers, parts[2])
 				}
+			case "P2PSENTMSG":
+				if doesHashMatch(parts[2], addr) {
+					if len(b.Messages) > MAX_MESSAGES {
+						b.Messages = b.Messages[1:]
+					}
+					b.Messages = append(b.Messages, Message{
+						sender: parts[1],
+						text:   parts[2],
+					})
+				}
 			default:
 
 			}
@@ -84,7 +103,7 @@ func (b *Backend) StartDiscovery() {
 }
 
 func (b *Backend) SendMessage(text string) {
-	b.conn.WriteToUDP([]byte(text), b.target)
+	b.conn.WriteToUDP([]byte("P2PSENTMSG/"+b.username+"/"+text), b.target)
 }
 
 func (b *Backend) Close() {
